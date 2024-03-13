@@ -1,0 +1,238 @@
+Program.Sub.ScreenSU.Start
+
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+V.Global.sFilePath.Declare
+V.Global.sRecord.Declare
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	
+	'Created by Pablo Salinas for EasyPay on 2/20/2019
+	'SPECIAL INSTRUCTIONS, THIS SCRIPT ASLO CREATES A FILEPATH WHERE THE USER WANTS TO SAVE THE FOLDER AND SAVES THE FILEPATH IN THE CUSTOM FOLDER UNDER "Filepath.txt". IF THE USER WISHES
+	'TO SWITCH THE FILEPATH THE "Filepath.txt" MUST BE DELETED IN ORDER FOR HER TO CHOOSE. WHEN THE SAVE DIALOG POPS UP, JUST PRESS ENTER, DO NOT TRY TO RENAME THE FILE IN THE SAVE DIALOG
+	'THIS WILL CAUSE AN ERROR IN SAVING THE FILEPATH!
+	'This is for ARC Project 5243. The purpose of this project is to create a CSV file during the Transfer to Labor process.
+	'V.passed.888888 is used to collect information on start time and the beginning pay period
+	
+	F.ODBC.Connection!con.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser, v.Ambient.PPass, 50000)
+	
+	F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+		F.Intrinsic.Control.Case("15290")
+			F.Intrinsic.Control.CallSub("Create_File")
+	F.Intrinsic.Control.EndSelect
+		
+	
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {1}{0}Subroutine: {2} Error: {3} with Description {4}", "GCG_5243_PYRL_LBR_XFER", v.Ambient.NewLine, v.Ambient.CurrentSubroutine, v.Ambient.ErrorNumber, v.Ambient.ErrorDescription, v.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Create_File.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	V.Local.sSql.Declare
+	V.Local.sTime.Declare
+	v.Local.sCymd.Declare
+	'V.Local.sEarningsID.Declare
+	v.Local.sYear.Declare
+	V.Local.sMonth.Declare
+	v.Local.sDate.Declare
+	v.Local.sTimeCardDate.Declare
+	V.Local.sPayPeriod.Declare
+	v.Local.sRegularHours.Declare
+	V.Local.sVacationHours.Declare
+	v.Local.sOvertimeHours.Declare
+	v.Local.sSicktimeHours.Declare
+	v.Local.sBereavementHours.Declare
+	V.Global.sRecord.Set("TM2")
+	V.Local.sRecord.Declare
+	V.Local.iIndex.Declare
+	v.Local.iRecord.Declare
+	V.Local.iView.Declare
+	V.Local.sFilter.Declare
+	
+	F.Intrinsic.String.Left(V.Passed.888888,8,V.Local.sCymd)
+	F.Intrinsic.String.Mid(V.Passed.888888,9,6,V.Local.sTime)
+'	V.Local.sCymd.Set("20180627")
+'	V.Local.sTime.Set("091533")
+	'Need to calculate pay period, END_CYMD is the timecard date? , 
+	F.Intrinsic.String.Build("Select Employee as EmployeeID, Name, Dept as Department, BEG_CYMD as PayPeriodStart, Hours as Amount, END_CYMD as PayPeriodEnd, End_Cymd as TimeCardDate, Type, EC from Pyrl_Labor_Xfer where Run_CYMD = '{0}' and Run_Time = '{1}' and EmployeeID < '90000'", v.Local.sCymd, v.Local.sTime, v.Local.sSql)
+	
+	f.Data.DataTable.CreateFromSQL("DT", "con", v.Local.sSql, True)
+	
+	F.Intrinsic.Control.If(V.DataTable.DT.RowCount,=,0)
+		F.Intrinsic.UI.Msgbox("No records found.","Payroll Export")
+		F.Data.DataTable.Close("DT")
+		F.Intrinsic.Control.ExitSub
+	F.Intrinsic.Control.EndIf
+	
+	
+	F.Data.DataView.Create("DT","VDT",22,"","")
+	F.Data.DataView.ToDataTableDistinct("DT","VDT","Emp","EmployeeID")
+	
+	F.Intrinsic.Control.For(V.Local.iIndex,0,V.DataTable.Emp.RowCount--,1)
+		F.Intrinsic.Math.Add(V.Local.iIndex,1,V.Local.iRecord)
+		V.Local.sRegularHours.Set("")
+		v.Local.sOvertimeHours.Set("")
+		V.Local.sSicktimeHours.Set("")
+		v.Local.sVacationHours.Set("")
+		v.Local.sBereavementHours.Set("")
+		
+		F.Intrinsic.String.Build("EmployeeID = '{0}'",V.DataTable.Emp(V.Local.iIndex).EmployeeID!FieldValTrim,V.Local.sFilter)
+		F.Data.DataView.SetFilter("DT","VDT",V.Local.sFilter)
+		F.Intrinsic.Control.For(V.Local.iView,0,V.DataView.DT!VDT.RowCount--,1)
+			'EC is blank so we need to look at Type and set the value for it
+			f.Intrinsic.Control.SelectCase(V.DataView.DT!VDT(V.Local.iView).TYPE!FieldValTrim)
+				f.Intrinsic.Control.Case("RT")
+					'Regular Time
+					'v.Local.sEarningsID.Set("REG")
+					F.Intrinsic.Control.If(V.Local.sRegularHours.Trim,=,"")
+						v.Local.sRegularHours.Set(V.DataView.DT!VDT(V.Local.iView).Amount!FieldValString)
+					F.Intrinsic.Control.Else
+						F.Intrinsic.Math.Add(V.Local.sRegularHours.Float,V.DataView.DT!VDT(V.Local.iView).Amount!FieldValFloat,V.Local.sRegularHours)
+					F.Intrinsic.Control.EndIf
+				f.Intrinsic.Control.Case("OT")
+					'Overtime
+					'v.Local.sEarningsID.Set("OVT")
+					F.Intrinsic.Control.If(V.Local.sOvertimeHours.Trim,=,"")
+						v.Local.sOvertimeHours.Set(V.DataView.DT!VDT(V.Local.iView).Amount!FieldValString)
+					F.Intrinsic.Control.Else
+						F.Intrinsic.Math.Add(V.Local.sOvertimeHours.Float,V.DataView.DT!VDT(V.Local.iView).Amount!FieldValFloat,V.Local.sOvertimeHours)
+					F.Intrinsic.Control.EndIf
+					
+				f.Intrinsic.Control.Case("DT")
+					'Double Time
+					'v.Local.sEarningsID.Set("DBL")
+				f.Intrinsic.Control.Case("EC")
+					F.Intrinsic.Control.If(V.DataView.DT!VDT(V.Local.iView).EC!FieldValString,=,"02")
+						F.Intrinsic.Control.If(V.Local.sSicktimeHours.Trim,=,"")
+							V.Local.sSicktimeHours.Set(V.DataView.DT!VDT(V.Local.iView).Amount!FieldValString)
+						F.Intrinsic.Control.Else
+							F.Intrinsic.Math.Add(V.Local.sSicktimeHours.Float,V.DataView.DT!VDT(V.Local.iView).Amount!FieldValFloat,V.Local.sSicktimeHours)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.ElseIf(V.DataView.DT!VDT(V.Local.iView).EC!FieldValString,=,"03")
+'						F.Intrinsic.Control.If(v.Local.sVacationHours.Trim,=,"")
+'							v.Local.sVacationHours.Set(V.DataView.DT!VDT(V.Local.iView).Amount!FieldValString)
+'						F.Intrinsic.Control.Else
+'							F.Intrinsic.Math.Add(V.Local.sVacationHours.Float,V.DataView.DT!VDT(V.Local.iView).Amount!FieldValFloat,V.Local.sVacationHours)
+'						F.Intrinsic.Control.EndIf
+						'per the customer adding vactions hours to regular hours.
+						F.Intrinsic.Control.If(V.Local.sRegularHours.Trim,=,"")
+							v.Local.sRegularHours.Set(V.DataView.DT!VDT(V.Local.iView).Amount!FieldValString)
+						F.Intrinsic.Control.Else
+							F.Intrinsic.Math.Add(V.Local.sRegularHours.Float,V.DataView.DT!VDT(V.Local.iView).Amount!FieldValFloat,V.Local.sRegularHours)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.ElseIf(V.DataView.DT!VDT(V.Local.iView).EC!FieldValString,=,"06")
+						F.Intrinsic.Control.If(V.Local.sBereavementHours.Trim,=,"")
+							v.Local.sBereavementHours.Set(V.DataView.DT!VDT(V.Local.iView).Amount!FieldValString)
+						F.Intrinsic.Control.Else
+							F.Intrinsic.Math.Add(V.Local.sBereavementHours.Float,V.DataView.DT!VDT(V.Local.iView).Amount!FieldValFloat,V.Local.sBereavementHours)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.EndIf
+					'Holiday
+					'v.Local.sEarningsID.Set("HOL")
+					
+			f.Intrinsic.Control.EndSelect
+
+		F.Intrinsic.Control.Next(V.Local.iView)
+		
+		'Process DateWorked
+		f.Intrinsic.String.Left(V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).TimeCardDate!FieldValTrim,4,v.Local.sYear)
+		f.Intrinsic.String.Mid(V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).TimeCardDate!FieldValTrim,5,2,v.Local.sMonth)
+		f.Intrinsic.String.Right(V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).TimeCardDate!FieldValTrim,2,v.Local.sDate)	
+		
+		F.Intrinsic.String.Right(v.Local.sYear,2,v.Local.sYear)
+		
+		F.Intrinsic.String.Build("{0}{1}{2}", v.Local.sYear,v.Local.sMonth,v.Local.sDate,v.Local.sTimeCardDate)
+		
+		
+'		F.Intrinsic.String.Build("{0}-{1}",V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).PayPeriodStart!FieldValTrim,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).PayPeriodEnd!FieldValTrim,v.Local.sPayPeriod)
+
+		F.Intrinsic.String.Format(V.Local.sRegularHours,"#0.00",V.Local.sRegularHours)
+		F.Intrinsic.String.Format(V.Local.sOvertimeHours,"#0.00",V.Local.sOvertimeHours)
+		F.Intrinsic.String.Format(V.Local.sSicktimeHours,"#0.00",V.Local.sSicktimeHours)
+		F.Intrinsic.String.Format(V.Local.sVacationHours,"#0.00",V.Local.sVacationHours)
+		F.Intrinsic.String.Format(V.Local.sBereavementHours,"#0.00",V.Local.sBereavementHours)
+		
+		F.Intrinsic.Control.If(V.Local.sRecord.Trim,=,"")
+			F.Intrinsic.Control.If(V.Local.sBereavementHours.Float,>,0)
+				F.Intrinsic.String.Build("{0},{20}{1}{20},{20}{2}{20},{20}{3}{20},{4},{5},{20}{6}{20},{7},{8},{9},{10},{11},{12},{13},{14},{20}{15}{20},{16},{17},{18},,{19},{20}A{20},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,{20}{20},,,{20}{20},",V.Local.iRecord,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).EmployeeID!FieldValString,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).Name!FieldValTrim,"", v.Local.sPayPeriod,v.Local.sTimeCardDate,"",v.Local.sRegularHours,v.Local.sOvertimeHours,"","","","",v.Local.sVacationHours,"","",V.Local.sSicktimeHours,"","",V.Local.sBereavementHours,V.Ambient.DblQuote,V.Local.sRecord)
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("{0},{20}{1}{20},{20}{2}{20},{20}{3}{20},{4},{5},{20}{6}{20},{7},{8},{9},{10},{11},{12},{13},{14},{20}{15}{20},{16},{17},{18},,{19},{20}{20},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,{20}{20},,,{20}{20},",V.Local.iRecord,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).EmployeeID!FieldValString,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).Name!FieldValTrim,"", v.Local.sPayPeriod,v.Local.sTimeCardDate,"",v.Local.sRegularHours,v.Local.sOvertimeHours,"","","","",v.Local.sVacationHours,"","",V.Local.sSicktimeHours,"","",V.Local.sBereavementHours,V.Ambient.DblQuote,V.Local.sRecord)
+			F.Intrinsic.Control.EndIf
+'			f.Intrinsic.String.Build("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",V.Local.iRecord,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).EmployeeID!FieldValString,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).Name!FieldValTrim,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).Department!FieldValString, v.Local.sPayPeriod,v.Local.sTimeCardDate,"",v.Local.sRegularHours,v.Local.sOvertimeHours,v.Local.sVacationHours,v.Local.sSicktimeHours,v.Local.sBereavementHours,V.Local.sRecord)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.Control.If(V.Local.sBereavementHours.Float,>,0)
+				F.Intrinsic.String.Build("{0}{1}{2},{22}{3}{22},{22}{4}{22},{22}{5}{22},{6},{7},{22}{8}{22},{9},{10},{11},{12},{13},{14},{15},{16},{22}{17}{22},{18},{19},{20},,{21},{22}A{22},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,{22}{22},,,{22}{22},",V.Local.sRecord,V.Ambient.NewLine,V.Local.iRecord,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).EmployeeID!FieldValString,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).Name!FieldValTrim,"", v.Local.sPayPeriod,v.Local.sTimeCardDate,"",v.Local.sRegularHours,v.Local.sOvertimeHours,"","","","",v.Local.sVacationHours,"","",V.Local.sSicktimeHours,"","",V.Local.sBereavementHours,V.Ambient.DblQuote,V.Local.sRecord)
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("{0}{1}{2},{22}{3}{22},{22}{4}{22},{22}{5}{22},{6},{7},{22}{8}{22},{9},{10},{11},{12},{13},{14},{15},{16},{22}{17}{22},{18},{19},{20},,{21},{22}{22},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,{22}{22},,,{22}{22},",V.Local.sRecord,V.Ambient.NewLine,V.Local.iRecord,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).EmployeeID!FieldValString,V.DataView.DT!VDT(V.DataView.DT!VDT.RowCount--).Name!FieldValTrim,"", v.Local.sPayPeriod,v.Local.sTimeCardDate,"",v.Local.sRegularHours,v.Local.sOvertimeHours,"","","","",v.Local.sVacationHours,"","",V.Local.sSicktimeHours,"","",V.Local.sBereavementHours,V.Ambient.DblQuote,V.Local.sRecord)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.Next(v.Local.iIndex)
+	
+'	F.Intrinsic.String.Build("TM2{0}Employee Number, Employee Name, Department Code, Pay Period, Timecard Date, Regular Hours, Overtime Hours, Vacation Hours, Sicktime Hours, Bereavement Hours{1}", v.Ambient.NewLine,v.Local.sRecord,v.Global.sRecord)
+	F.Intrinsic.String.Build("{2}TM2{2}{0}{1}",V.Ambient.NewLine,v.Local.sRecord,V.Ambient.DblQuote,v.Global.sRecord)
+	
+	F.ODBC.Connection!con.Close
+	
+	F.Intrinsic.Control.CallSub(Write_File,"REC",V.Global.sRecord)
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {1}{0}Subroutine: {2} Error: {3} with Description {4}", "GCG_5243_PYRL_LBR_XFER",v.Ambient.NewLine, v.Ambient.CurrentSubroutine, v.Ambient.ErrorNumber, v.Ambient.ErrorDescription, v.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+F.Intrinsic.Control.EndTry
+Program.Sub.Create_File.End
+
+
+Program.Sub.Write_File.Start
+F.Intrinsic.Control.Try
+	v.Local..BulkDeclareString(sError, sFile, sFileName, sFullPath, sDate)
+	V.Local.bexists.Declare(Boolean)
+	v.Local.sDirectory.Declare
+	
+	'set the date and format it
+	Function.Intrinsic.String.Format (V.Ambient.Date ,"MMDDYYYY",V.Local.sdate)
+	
+	'build the filename
+	F.Intrinsic.String.Build("{0}_PAYROLL_EXPORT.csv",V.Local.sDate,V.Local.sFilename)
+	'build the full path
+	'provided the option for the user to save the file where they want instead
+	
+	F.Intrinsic.String.Build("{0}\Custom",V.Caller.GlobalDir,V.Local.sDirectory)
+	F.Intrinsic.File.DirExists(V.Local.sDirectory,V.Local.bexists)
+	F.Intrinsic.Control.If(V.Local.bexists,=,False)
+		F.Intrinsic.File.CreateDir(V.Local.sDirectory)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("{0}\Custom\5243",V.Caller.GlobalDir,V.Local.sDirectory)
+	F.Intrinsic.File.DirExists(V.Local.sDirectory,V.Local.bexists)
+	F.Intrinsic.Control.If(V.Local.bexists,=,False)
+		F.Intrinsic.File.CreateDir(V.Local.sDirectory)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("{0}\Custom\5243\{1}",v.Caller.GlobalDir,V.Local.sFilename,v.Local.sfullpath)
+	
+'	F.Intrinsic.UI.ShowSaveFileDialog(v.Local.sfilename,"*.csv",v.Local.sfullpath)
+	
+'	F.Intrinsic.String.Build("{0}{1}",v.Local.sFile,v.Local.sFilename,v.Local.sFullpath)
+	
+	F.Intrinsic.File.String2File(V.Local.sfullpath,V.Args.REC)
+	F.Intrinsic.UI.Msgbox("File created")
+	
+	F.Intrinsic.Control.ExitSub
+	
+	F.Intrinsic.Control.Catch
+		F.Intrinsic.String.Build("Project: {1}{0}Subroutine: {2} Error: {3} with Description {4}", "GCG_5243_PYRL_LBR_XFER", v.Ambient.NewLine, v.Ambient.CurrentSubroutine, v.Ambient.ErrorNumber, v.Ambient.ErrorDescription, v.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndTry
+Program.Sub.Write_File.End
+
+
+
